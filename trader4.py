@@ -12,8 +12,10 @@ class Trader:
         self.position_limit = {'STARFRUIT': 20, 'AMETHYSTS': 20}
         self.starfruit_cache = []
         self.amethyst_cache = []
-        self.cache_size = {'STARFRUIT': 5, 'AMETHYSTS': 6}
+        self.cache_size = {'STARFRUIT': 20, 'AMETHYSTS': 6}
         self.mean_reversion_window = 5
+        self.momentum_window = 10
+        self.momentum_threshold = 0.0001
 
     def update_cache(self, state: TradingState):
         order_depth_starfruit = state.order_depths.get('STARFRUIT')
@@ -30,6 +32,19 @@ class Trader:
             self.amethyst_cache.append(order_depth_amethyst)
 
         print("Amethyst cache: ", [max(order_depth.buy_orders.keys()) for order_depth in self.amethyst_cache if len(order_depth.buy_orders.keys()) != 0])
+
+    def momentum_trading_strategy(self, product: str) -> float:
+        # Ensure the cache contains sufficient historical data
+        if len(self.starfruit_cache) < self.cache_size[product]:
+            return 0.0  # Not enough data for the strategy
+
+        # Extract the prices from the cache for the specified product
+        prices = [order_depth.buy_orders[max(order_depth.buy_orders.keys())] for order_depth in self.starfruit_cache]
+
+        # Calculate the momentum score
+        momentum_score = (prices[-1] - prices[0]) / prices[0]
+
+        return momentum_score
 
     def mean_reversion(self) -> float:
         if len(self.amethyst_cache) < self.mean_reversion_window:
@@ -69,12 +84,13 @@ class Trader:
         self.position[product] += quantity
 
 
+
     # Only method required. It takes all buy and sell orders for all symbols as an input, and outputs a list of orders to be sent
     def run(self, state: TradingState):
         self.update_cache(state)
 
-        print("traderData: " + state.traderData)
-        print("Observations: " + str(state.observations))
+        #print("traderData: " + state.traderData)
+        #print("Observations: " + str(state.observations))
         result = {}
         for product in state.order_depths:
             if(product in state.position.keys()):
@@ -82,28 +98,45 @@ class Trader:
 
             order_depth: OrderDepth = state.order_depths[product]
             orders: List[Order] = []
-            print("Current Position:" + str(self.position['AMETHYSTS']))
+            #print("Current Position:" + str(self.position['AMETHYSTS']))
             
-            print("Buy Order depth : " + str(len(order_depth.buy_orders)) + ", Sell order depth : " + str(len(order_depth.sell_orders)))
+           #print("Buy Order depth : " + str(len(order_depth.buy_orders)) + ", Sell order depth : " + str(len(order_depth.sell_orders)))
             if product == "AMETHYSTS":
                 mean_reversion_signal = self.mean_reversion()
                 print(f"Signal: {mean_reversion_signal}")
-                if mean_reversion_signal > 0:
+                if mean_reversion_signal > 1.25:
                     best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
                     allowable_quantity = self.calculate_allowable_quantity(product, 'SELL', -best_bid_amount)
                     quantity = min(allowable_quantity, -best_bid_amount)
-                    print("SELL", str(-best_bid_amount) + "x", best_bid)
-                    if(best_bid > 10000):
-                        orders.append(Order(product, best_bid, quantity))
-                        self.update_position(product, quantity)
-                elif mean_reversion_signal < 0:
-                    best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
-                    allowable_quantity = self.calculate_allowable_quantity(product, 'BUY', -best_ask_amount)
-                    quantity = min(allowable_quantity, -best_ask_amount)
-                    print("BUY", str(best_ask_amount) + "x", best_ask)
-                    if(best_ask < 10000):
+                    #print("SELL", str(-best_bid_amount) + "x", best_bid)
+                    orders.append(Order(product, best_bid, quantity))
+                    self.update_position(product, quantity)
+                elif mean_reversion_signal < -1.25:
+                        best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
+                        allowable_quantity = self.calculate_allowable_quantity(product, 'BUY', best_ask_amount)
+                        quantity = min(allowable_quantity, best_ask_amount)
+                        #print("BUY", str(best_ask_amount) + "x", best_ask)
                         orders.append(Order(product, best_ask, quantity))
-                        self.update_position(product, -quantity)
+                        self.update_position(product, quantity)
+
+
+            # if product == "STARFRUIT":
+            #         momentum = self.momentum_trading_strategy(product)
+            #         print(f"Starfruit Momentum: {momentum}")
+            #         if momentum > 0.75:
+            #             best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
+            #             allowable_quantity = self.calculate_allowable_quantity(product, 'BUY', -best_ask_amount)
+            #             quantity = min(allowable_quantity, -best_ask_amount)
+            #             print("BUY", str(best_ask_amount) + "x", best_ask)
+            #             orders.append(Order(product, best_ask, quantity))
+            #             self.update_position(product, -quantity)
+            #         elif momentum < -0.75:
+            #             best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
+            #             allowable_quantity = self.calculate_allowable_quantity(product, 'SELL', -best_bid_amount)
+            #             quantity = min(allowable_quantity, -best_bid_amount)
+            #             print("SELL", str(-best_bid_amount) + "x", best_bid)
+            #             orders.append(Order(product, best_bid, quantity))
+            #             self.update_position(product, quantity)   
             result[product] = orders
 
         traderData = jsonpickle.encode(result)
