@@ -126,6 +126,7 @@ class Trader:
     def run(self, state: TradingState):
         result = {}
         for product in state.order_depths:
+            
             print(f"Product: {product}")
             order_depth: OrderDepth = state.order_depths[product]
             orders: List[Order] = []
@@ -149,7 +150,7 @@ class Trader:
 
             if(product == 'ORCHIDS'):
                 self.humidityList.append(state.observations.conversionObservations['ORCHIDS'].humidity)
-
+                conversions = 0
                 best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
                 best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
                 current_position = self.position['ORCHIDS']
@@ -163,6 +164,7 @@ class Trader:
                         print(str(product), "BUY", str(allowable_quantity) + "x", best_ask)
                         orders.append(Order(product, best_ask, best_ask_amount))
                         self.update_position(product, "BUY", best_ask_amount)
+                        conversions = best_ask_amount
                 if signal == -1:
                     if len(order_depth.buy_orders) != 0:
                         # Sell if predicted price is significantly lower than best bid price and we have a position to sell
@@ -170,6 +172,8 @@ class Trader:
                         print(str(product), "SELL", str(-allowable_quantity) + "x", best_bid)
                         orders.append(Order(product, best_bid, -best_bid_amount))
                         self.update_position(product, "SELL", -best_bid_amount)
+                        conversions = best_bid_amount
+                print(f"  !!!Signal: {signal}, conversion: {conversions}!!!  ")
             
 
             if(product in ('CHOCOLATE', 'STRAWBERRIES', 'ROSES', 'GIFT_BASKET')):
@@ -216,6 +220,8 @@ class Trader:
                             print(str(product), "BUY", str(best_ask_amount) + "x", best_ask)
                             orders.append(Order(product, best_ask, best_ask_amount))
                             self.update_position(product, "BUY", best_ask_amount)
+                            if (self.position['ORCHIDS'] != 0):
+                                conversions = best_ask_amount
         
                     if len(order_depth.buy_orders) != 0:
                         best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
@@ -224,6 +230,8 @@ class Trader:
                             print(str(product), "SELL", str(-best_bid_amount) + "x", best_bid)
                             orders.append(Order(product, best_bid, -best_bid_amount))
                             self.update_position(product, "SELL", best_bid_amount)
+                            if (self.position['ORCHIDS'] != 0):
+                                conversions = best_ask_amount
 
                 if(product == 'GIFT_BASKET'):
                     orders += self.compute_orders_basket(state.order_depths)["GIFT_BASKET"]
@@ -248,5 +256,5 @@ class Trader:
 
             
         data = jsonpickle.encode("hello")
-        return result, 0, data
+        return result, conversions, data
 
